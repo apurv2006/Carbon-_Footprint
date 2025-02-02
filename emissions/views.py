@@ -1,9 +1,13 @@
 from rest_framework import viewsets
 from .models import EmissionFactor, Activity, EmissionRecord,UserActivity
-from .serializer import EmissionFactorSerializer, ActivitySerializer, EmissionRecordSerializer,EmissionsSerializer,UserActivitySerializer
+from .serializer import EmissionFactorSerializer, ActivitySerializer, EmissionRecordSerializer,EmissionsSerializer,UserActivitySerializer,PredictionSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
 import requests
+from django.http import JsonResponse
+from .models import Prediction
+
 class EmissionFactorViewSet(viewsets.ModelViewSet):
     queryset = EmissionFactor.objects.all()
     serializer_class = EmissionFactorSerializer
@@ -68,3 +72,96 @@ class UserActivityViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+import joblib
+import pandas as pd
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+model_pipeline = joblib.load('C:/Users/apurva vivobook/Desktop/code/model/carbon_emission_model.pkl')
+
+# Define the prediction logic
+def suggest_personalized_action(user_data, predicted_emission):
+    # Example benchmarks for the carbon footprint
+    average_vehicle_distance = 500  # Average vehicle distance per month (km)
+    average_grocery_bill = 500  # Average monthly grocery bill
+    average_waste_bag_count = 5  # Average number of waste bags per week
+
+    suggestions = []
+
+    if int(user_data['Vehicle Monthly Distance Km'])> average_vehicle_distance:
+        suggestions.append("You can reduce your carbon footprint by using public transportation or carpooling more frequently.")
+    else:
+        suggestions.append("Great job! You're already minimizing your vehicle usage.")
+
+    if int(user_data['Monthly Grocery Bill']) > average_grocery_bill:
+        suggestions.append("Consider buying in bulk and reducing food waste to lower your grocery-related emissions.")
+    else:
+        suggestions.append("Your grocery consumption is already sustainable. Keep it up!")
+
+    if int(user_data['Waste Bag Weekly Count']) > average_waste_bag_count:
+        suggestions.append("Try to reduce your waste production by composting and recycling more.")
+    else:
+        suggestions.append("Good job! Your waste management practices are already environmentally friendly.")
+
+    if predicted_emission > 3000:
+        suggestions.append("Your carbon footprint is quite high. Consider integrating energy-efficient practices in your daily routine.")
+    elif 1500 < predicted_emission <= 3000:
+        suggestions.append("Your carbon footprint is moderate. Some lifestyle changes like reducing car usage could help.")
+    else:
+        suggestions.append("Awesome! Your carbon footprint is low. Keep maintaining these sustainable practices.")
+
+    return suggestions
+
+@api_view(['POST'])
+def predict_carbon_emission(request):
+    # Get data from the frontend (React)
+    user_data = request.data
+    selected_features = ['Vehicle Monthly Distance Km', 'Monthly Grocery Bill', 'Waste Bag Weekly Count']
+
+    # Prepare the data for prediction (same preprocessing as in the training phase)
+    df_selected = pd.DataFrame([user_data], columns=selected_features)
+    df_selected_encoded = pd.get_dummies(df_selected, drop_first=True)
+    file_path = 'C:/Users/apurva vivobook/Desktop/code/model/X_train_columns.csv'
+    # Load the training columns (ensure the model expects the same columns)
+    X_train_columns = pd.read_csv(file_path, header=None).squeeze().tolist()
+    df_selected_encoded = df_selected_encoded.reindex(columns=X_train_columns, fill_value=0)
+
+    # Predict emissions
+    predicted_emission = model_pipeline.predict(df_selected_encoded)[0]
+
+    # Get personalized suggestions based on the predicted emissions
+    suggestions = suggest_personalized_action(user_data, predicted_emission)
+
+    # Prepare response data
+    response_data = {
+        'predicted_emission': predicted_emission,
+        'suggestions': suggestions
+    }
+
+    return Response(response_data)
+from rest_framework.decorators import api_view
+from django.http import JsonResponse
+from .serializer import PredictionSerializer
+from rest_framework.response import Response
+from rest_framework import status
+
+@api_view(['POST'])
+def submit_carbon_footprint(request):
+    if request.method == 'POST':
+        serializer = PredictionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()  # Save the data to MySQL
+            
+            # Prepare the JsonResponse with the success message
+            response = JsonResponse({'message': 'Data saved successfully!'})
+            response['Access-Control-Allow-Origin'] = '*'  # Set CORS header to allow any origin
+            
+            return response  # Return the response
+        else:
+            # Log the validation errors for debugging
+            print("Validation errors:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class PastPredictionsView(APIView):
+    def get(self, request):
+        predictions = Prediction.objects.all()
+        serializer = PredictionSerializer(predictions, many=True)
+        return Response(serializer.data)

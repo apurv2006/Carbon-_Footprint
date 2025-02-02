@@ -43,3 +43,12 @@ class UserActivity(models.Model):
 
     def __str__(self):
         return f"{self.activity_type} - {self.activity_value} {self.unit}"
+
+class Prediction(models.Model):
+    vehicle_distance = models.FloatField()
+    grocery_bill = models.FloatField()
+    waste_bag_count = models.IntegerField()
+    predicted_emission = models.FloatField()
+    suggestions = models.TextField()
+    def __str__(self):
+        return f"Carbon Footprint for {self.vehicle_distance} km, {self.grocery_bill} bill"

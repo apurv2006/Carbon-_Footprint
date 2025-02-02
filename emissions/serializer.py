@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import EmissionFactor, Activity, EmissionRecord,UserActivity
+from .models import EmissionFactor, Activity, EmissionRecord,UserActivity,Prediction
 
 class EmissionFactorSerializer(serializers.ModelSerializer):
     class Meta:
@@ -27,3 +27,20 @@ class UserActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserActivity
         fields = ['user', 'activity_type', 'activity_value', 'unit', 'timestamp', 'environmental_factor']
+class PredictionSerializer(serializers.Serializer):
+    vehicle_distance = serializers.FloatField()
+    grocery_bill = serializers.FloatField()
+    waste_bag_count = serializers.IntegerField()
+    predicted_emission = serializers.FloatField()
+    suggestions = serializers.ListField(child=serializers.CharField())
+    def create(self, validated_data):
+        # Create a new CarbonFootprint instance and save to the database
+        return Prediction.objects.create(**validated_data)
+class CarbonFootprintSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prediction
+        fields = ['vehicle_distance', 'grocery_bill', 'waste_bag_count', 'predicted_emission', 'suggestions']
+
+    def create(self, validated_data):
+        # Create a new CarbonFootprint instance and save to the database
+        return Prediction.objects.create(**validated_data)
